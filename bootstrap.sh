@@ -155,14 +155,18 @@ generate_env() {
     local service_name
     service_name=$(basename "$service_dir")
 
-    [[ -f "$template" ]] || return 0
+    if [[ ! -f "$template" ]]; then
+        info "$service_name — no .env.template, skipping."
+        return 0
+    fi
 
     if [[ -f "$env_file" ]]; then
-        warn "$service_name/.env already exists — skipping generation."
+        info "$service_name/.env already exists — checking for drift..."
         check_env_drift "$service_dir"
         return
     fi
 
+    info "$service_name — generating .env from template..."
     local content
     content=$(cat "$template")
 
@@ -175,7 +179,7 @@ generate_env() {
     done
 
     echo "$content" > "$env_file"
-    info "Generated $service_name/.env from template."
+    info "$service_name/.env generated."
 }
 
 for service_dir in "$REPO_DIR"/services/*/; do
@@ -187,9 +191,9 @@ ADGUARD_CONF="$REPO_DIR/services/adguard/config/AdGuardHome.yaml"
 ADGUARD_TMPL="$REPO_DIR/services/adguard/config/AdGuardHome.yaml.template"
 
 if [[ -f "$ADGUARD_CONF" ]]; then
-    warn "AdGuardHome.yaml already exists — skipping."
+    info "AdGuardHome.yaml already exists — skipping."
 else
-    info "Generating AdGuard Home config..."
+    info "Generating AdGuardHome.yaml from template..."
     sed -e "s|%%ADGUARD_USER%%|${ADGUARD_USER}|g" \
         -e "s|%%ADGUARD_HASH%%|${ADGUARD_HASH}|g" \
         "$ADGUARD_TMPL" > "$ADGUARD_CONF"
