@@ -37,7 +37,7 @@ if ! command -v gh &>/dev/null; then
 fi
 
 apt-get update -qq
-apt-get install -y -qq git ansible gh apache2-utils haveged
+apt-get install -y -qq git ansible gh apache2-utils rng-tools5
 
 # ---------- GitHub auth ----------
 if ! gh auth status &>/dev/null; then
@@ -114,6 +114,13 @@ if [[ ${#missing_submodules[@]} -gt 0 ]]; then
     exit 1
 fi
 info "All submodules present."
+
+# ---------- ensure entropy for secret generation ----------
+if [[ $(cat /proc/sys/kernel/random/entropy_avail) -lt 512 ]]; then
+    info "Low entropy detected — starting rngd..."
+    systemctl start rng-tools 2>/dev/null || rngd -r /dev/urandom 2>/dev/null || true
+    sleep 1
+fi
 
 # ---------- generate .env files ----------
 info "Checking service .env files..."
