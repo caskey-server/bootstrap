@@ -186,7 +186,6 @@ if [[ -f "$ADGUARD_CONF" ]]; then
     info "AdGuardHome.yaml already exists — skipping."
 else
     info "Generating AdGuardHome.yaml from template..."
-    local escaped_hash
     escaped_hash=$(printf '%s\n' "$ADGUARD_HASH" | sed 's/[&/\$]/\\&/g')
     sed -e "s|%%ADGUARD_USER%%|${ADGUARD_USER}|g" \
         -e "s|%%ADGUARD_HASH%%|${escaped_hash}|g" \
