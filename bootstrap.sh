@@ -37,7 +37,7 @@ if ! command -v gh &>/dev/null; then
 fi
 
 apt-get update -qq
-apt-get install -y -qq git ansible gh apache2-utils
+apt-get install -y -qq git ansible gh apache2-utils haveged
 
 # ---------- GitHub auth ----------
 if ! gh auth status &>/dev/null; then
