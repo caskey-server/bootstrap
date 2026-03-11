@@ -165,10 +165,14 @@ generate_env() {
 
     # Replace each placeholder with a unique random value
     while [[ "$content" == *"%%RANDOM_PASSWORD%%"* ]]; do
-        content="${content/%%RANDOM_PASSWORD%%/$(head -c 16 /dev/urandom | xxd -p)}"
+        local rand
+        rand=$(dd if=/dev/urandom bs=16 count=1 2>/dev/null | xxd -p | tr -d '\n')
+        content="${content/%%RANDOM_PASSWORD%%/$rand}"
     done
     while [[ "$content" == *"%%RANDOM_SECRET%%"* ]]; do
-        content="${content/%%RANDOM_SECRET%%/$(head -c 32 /dev/urandom | xxd -p)}"
+        local rand
+        rand=$(dd if=/dev/urandom bs=32 count=1 2>/dev/null | xxd -p | tr -d '\n')
+        content="${content/%%RANDOM_SECRET%%/$rand}"
     done
 
     echo "$content" > "$env_file"
