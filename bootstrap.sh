@@ -160,21 +160,17 @@ generate_env() {
     fi
 
     info "$service_name — generating .env from template..."
-    local content
-    content=$(cat "$template")
-
-    # Replace each placeholder with a unique random value
-    local placeholder
-    while [[ "$content" == *'%%RANDOM_PASSWORD%%'* ]]; do
+    cp "$template" "$env_file"
+    while grep -q 'GENERATE_PASSWORD' "$env_file"; do
+        local rand
         rand=$(xxd -l 16 -p -c 256 /dev/urandom)
-        content=$(echo "$content" | sed "s/%%RANDOM_PASSWORD%%/$rand/")
+        sed -i "0,/GENERATE_PASSWORD/{s/GENERATE_PASSWORD/$rand/}" "$env_file"
     done
-    while [[ "$content" == *'%%RANDOM_SECRET%%'* ]]; do
+    while grep -q 'GENERATE_SECRET' "$env_file"; do
+        local rand
         rand=$(xxd -l 32 -p -c 256 /dev/urandom)
-        content=$(echo "$content" | sed "s/%%RANDOM_SECRET%%/$rand/")
+        sed -i "0,/GENERATE_SECRET/{s/GENERATE_SECRET/$rand/}" "$env_file"
     done
-
-    echo "$content" > "$env_file"
     info "$service_name/.env generated."
 }
 
