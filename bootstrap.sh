@@ -117,8 +117,8 @@ info "All submodules present."
 
 # ---------- ensure entropy for secret generation ----------
 if [[ $(cat /proc/sys/kernel/random/entropy_avail) -lt 512 ]]; then
-    info "Low entropy detected — starting rngd..."
-    systemctl start rng-tools 2>/dev/null || rngd -r /dev/urandom 2>/dev/null || true
+    info "Low entropy detected — starting rngd with /dev/urandom..."
+    rngd -r /dev/urandom
     sleep 1
 fi
 
