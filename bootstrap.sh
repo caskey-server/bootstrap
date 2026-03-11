@@ -37,7 +37,7 @@ if ! command -v gh &>/dev/null; then
 fi
 
 apt-get update -qq
-apt-get install -y -qq git ansible gh apache2-utils rng-tools5
+apt-get install -y -qq git ansible gh apache2-utils
 
 # ---------- GitHub auth ----------
 if ! gh auth status &>/dev/null; then
@@ -115,13 +115,6 @@ if [[ ${#missing_submodules[@]} -gt 0 ]]; then
 fi
 info "All submodules present."
 
-# ---------- ensure entropy for secret generation ----------
-if [[ $(cat /proc/sys/kernel/random/entropy_avail) -lt 512 ]]; then
-    info "Low entropy detected — starting rngd with /dev/urandom..."
-    rngd -r /dev/urandom
-    sleep 1
-fi
-
 # ---------- generate .env files ----------
 info "Checking service .env files..."
 
@@ -172,10 +165,10 @@ generate_env() {
 
     # Replace each placeholder with a unique random value
     while [[ "$content" == *"%%RANDOM_PASSWORD%%"* ]]; do
-        content="${content/%%RANDOM_PASSWORD%%/$(openssl rand -hex 16)}"
+        content="${content/%%RANDOM_PASSWORD%%/$(head -c 16 /dev/urandom | xxd -p)}"
     done
     while [[ "$content" == *"%%RANDOM_SECRET%%"* ]]; do
-        content="${content/%%RANDOM_SECRET%%/$(openssl rand -hex 32)}"
+        content="${content/%%RANDOM_SECRET%%/$(head -c 32 /dev/urandom | xxd -p)}"
     done
 
     echo "$content" > "$env_file"
