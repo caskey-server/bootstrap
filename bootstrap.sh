@@ -57,6 +57,10 @@ else
     info "GitHub CLI already authenticated — skipping."
 fi
 
+# Configure git credentials globally so submodule fetches work
+git config --global url."https://x-access-token:$(gh auth token)@github.com/caskey-server/".insteadOf "https://github.com/caskey-server/"
+info "Git credentials configured (global)."
+
 # ---------- verify PAT scope ----------
 info "Verifying PAT has access to caskey-server org..."
 if ! gh api "orgs/caskey-server/repos" --silent 2>/dev/null; then
@@ -87,14 +91,11 @@ if [[ -d "$REPO_DIR/.git" ]]; then
     cd "$REPO_DIR"
     git pull --recurse-submodules
     git submodule update --init --recursive
+    git submodule foreach git checkout main
 else
     info "Cloning server repo to $REPO_DIR..."
     gh repo clone "$REPO_URL" "$REPO_DIR" -- --recurse-submodules
 fi
-
-# Configure git credentials scoped to this repo only
-git -C "$REPO_DIR" config url."https://x-access-token:$(gh auth token)@github.com/caskey-server/".insteadOf "https://github.com/caskey-server/"
-info "Git credentials configured (repo-scoped)."
 
 # Verify submodules cloned successfully
 info "Verifying submodules..."
