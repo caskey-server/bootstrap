@@ -164,17 +164,14 @@ generate_env() {
     content=$(cat "$template")
 
     # Replace each placeholder with a unique random value
-    # Note: no pipes — curl|bash makes stdin the curl stream,
-    # so piped subcommands can consume the script itself.
-    while [[ "$content" == *"%%RANDOM_PASSWORD%%"* ]]; do
-        local rand
+    local placeholder
+    while [[ "$content" == *'%%RANDOM_PASSWORD%%'* ]]; do
         rand=$(xxd -l 16 -p -c 256 /dev/urandom)
-        content="${content/%%RANDOM_PASSWORD%%/$rand}"
+        content=$(echo "$content" | sed "s/%%RANDOM_PASSWORD%%/$rand/")
     done
-    while [[ "$content" == *"%%RANDOM_SECRET%%"* ]]; do
-        local rand
+    while [[ "$content" == *'%%RANDOM_SECRET%%'* ]]; do
         rand=$(xxd -l 32 -p -c 256 /dev/urandom)
-        content="${content/%%RANDOM_SECRET%%/$rand}"
+        content=$(echo "$content" | sed "s/%%RANDOM_SECRET%%/$rand/")
     done
 
     echo "$content" > "$env_file"
