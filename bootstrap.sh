@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # bootstrap.sh — One-shot server setup
-# Usage: curl -fsSL https://raw.githubusercontent.com/caskey-server/bootstrap/main/bootstrap.sh | bash
+# Usage: curl -fsSL https://raw.githubusercontent.com/caskey-server/bootstrap/main/bootstrap.sh | sudo bash
 set -euo pipefail
 
 REPO_DIR="/opt/server"
@@ -57,6 +57,15 @@ else
     info "GitHub CLI already authenticated — skipping."
 fi
 
+# ---------- verify PAT scope ----------
+info "Verifying PAT has access to caskey-server org..."
+if ! gh api "orgs/caskey-server/repos" --silent 2>/dev/null; then
+    error "PAT cannot access caskey-server org repos."
+    error "Ensure the token has Contents:Read scope for the caskey-server org."
+    exit 1
+fi
+info "PAT scope verified."
+
 # ---------- AdGuard credentials ----------
 info "AdGuard Home admin credentials"
 read -rp "  AdGuard admin username: " ADGUARD_USER </dev/tty
@@ -87,8 +96,49 @@ fi
 git -C "$REPO_DIR" config url."https://x-access-token:$(gh auth token)@github.com/caskey-server/".insteadOf "https://github.com/caskey-server/"
 info "Git credentials configured (repo-scoped)."
 
+# Verify submodules cloned successfully
+info "Verifying submodules..."
+missing_submodules=()
+while IFS= read -r submodule_path; do
+    if [[ ! -f "$REPO_DIR/$submodule_path/docker-compose.yml" ]]; then
+        missing_submodules+=("$submodule_path")
+    fi
+done < <(git -C "$REPO_DIR" config --file .gitmodules --get-regexp '^submodule\..*\.path$' | awk '{print $2}')
+
+if [[ ${#missing_submodules[@]} -gt 0 ]]; then
+    error "The following submodules failed to clone:"
+    for m in "${missing_submodules[@]}"; do
+        error "  - $m"
+    done
+    exit 1
+fi
+info "All submodules present."
+
 # ---------- generate .env files ----------
 info "Checking service .env files..."
+
+check_env_drift() {
+    local service_dir="$1"
+    local template="$service_dir/.env.template"
+    local env_file="$service_dir/.env"
+    local service_name
+    service_name=$(basename "$service_dir")
+
+    [[ -f "$template" ]] || return 0
+    [[ -f "$env_file" ]] || return 0
+
+    local template_keys env_keys missing
+    template_keys=$(grep -oP '^[A-Za-z_][A-Za-z0-9_]*(?==)' "$template" | sort)
+    env_keys=$(grep -oP '^[A-Za-z_][A-Za-z0-9_]*(?==)' "$env_file" | sort)
+    missing=$(comm -23 <(echo "$template_keys") <(echo "$env_keys"))
+
+    if [[ -n "$missing" ]]; then
+        warn "$service_name/.env is missing keys from template:"
+        while IFS= read -r key; do
+            warn "  - $key"
+        done <<< "$missing"
+    fi
+}
 
 generate_env() {
     local service_dir="$1"
@@ -100,7 +150,8 @@ generate_env() {
     [[ -f "$template" ]] || return 0
 
     if [[ -f "$env_file" ]]; then
-        warn "$service_name/.env already exists — skipping."
+        warn "$service_name/.env already exists — skipping generation."
+        check_env_drift "$service_dir"
         return
     fi
 
