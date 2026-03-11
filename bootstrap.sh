@@ -83,9 +83,9 @@ else
     gh repo clone "$REPO_URL" "$REPO_DIR" -- --recurse-submodules
 fi
 
-# Configure git credentials globally (read-only PAT, scoped to org)
-git config --global url."https://x-access-token:$(gh auth token)@github.com/caskey-server/".insteadOf "https://github.com/caskey-server/"
-info "Git credentials configured."
+# Configure git credentials scoped to this repo only
+git -C "$REPO_DIR" config url."https://x-access-token:$(gh auth token)@github.com/caskey-server/".insteadOf "https://github.com/caskey-server/"
+info "Git credentials configured (repo-scoped)."
 
 # ---------- generate .env files ----------
 info "Checking service .env files..."
