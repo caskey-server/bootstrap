@@ -37,7 +37,7 @@ if ! command -v gh &>/dev/null; then
 fi
 
 apt-get update -qq
-apt-get install -y -qq git ansible gh
+apt-get install -y -qq git ansible gh apache2-utils
 
 # ---------- GitHub auth ----------
 if ! gh auth status &>/dev/null; then
@@ -56,6 +56,21 @@ if ! gh auth status &>/dev/null; then
 else
     info "GitHub CLI already authenticated — skipping."
 fi
+
+# ---------- AdGuard credentials ----------
+info "AdGuard Home admin credentials"
+read -rp "  AdGuard admin username: " ADGUARD_USER </dev/tty
+while true; do
+    read -rsp "  AdGuard admin password: " ADGUARD_PASS </dev/tty
+    echo
+    read -rsp "  Confirm password: " ADGUARD_PASS_CONFIRM </dev/tty
+    echo
+    if [[ "$ADGUARD_PASS" == "$ADGUARD_PASS_CONFIRM" ]]; then
+        break
+    fi
+    warn "Passwords do not match — try again."
+done
+ADGUARD_HASH=$(htpasswd -nbBC 10 "" "$ADGUARD_PASS" | cut -d: -f2)
 
 # ---------- clone server repo ----------
 if [[ -d "$REPO_DIR/.git" ]]; then
@@ -107,6 +122,20 @@ generate_env() {
 for service_dir in "$REPO_DIR"/services/*/; do
     generate_env "$service_dir"
 done
+
+# ---------- generate AdGuard config ----------
+ADGUARD_CONF="$REPO_DIR/services/adguard/config/AdGuardHome.yaml"
+ADGUARD_TMPL="$REPO_DIR/services/adguard/config/AdGuardHome.yaml.template"
+
+if [[ -f "$ADGUARD_CONF" ]]; then
+    warn "AdGuardHome.yaml already exists — skipping."
+else
+    info "Generating AdGuard Home config..."
+    sed -e "s|%%ADGUARD_USER%%|${ADGUARD_USER}|g" \
+        -e "s|%%ADGUARD_HASH%%|${ADGUARD_HASH}|g" \
+        "$ADGUARD_TMPL" > "$ADGUARD_CONF"
+    info "Generated AdGuard Home config with pre-seeded credentials."
+fi
 
 # ---------- run Ansible ----------
 info "Running Ansible playbook..."
