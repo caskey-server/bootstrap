@@ -75,83 +75,33 @@ info "Git credentials configured."
 # ---------- generate .env files ----------
 info "Checking service .env files..."
 
-gen_password() {
-    openssl rand -hex 16
-}
-
-gen_secret() {
-    openssl rand -hex 32
-}
-
 generate_env() {
     local service_dir="$1"
+    local template="$service_dir/.env.template"
     local env_file="$service_dir/.env"
     local service_name
     service_name=$(basename "$service_dir")
+
+    [[ -f "$template" ]] || return 0
 
     if [[ -f "$env_file" ]]; then
         warn "$service_name/.env already exists — skipping."
         return
     fi
 
-    case "$service_name" in
-        gitea)
-            cat > "$env_file" <<ENVEOF
-# Gitea database
-GITEA_DB_USER=gitea
-GITEA_DB_PASSWORD=$(gen_password)
-GITEA_DB_NAME=gitea
-ENVEOF
-            ;;
-        romm)
-            cat > "$env_file" <<ENVEOF
-# RomM database
-ROMM_DB_USER=romm
-ROMM_DB_PASSWORD=$(gen_password)
-ROMM_DB_ROOT_PASSWORD=$(gen_password)
+    local content
+    content=$(cat "$template")
 
-# RomM auth
-ROMM_AUTH_SECRET_KEY=$(gen_secret)
+    # Replace each placeholder with a unique random value
+    while [[ "$content" == *"%%RANDOM_PASSWORD%%"* ]]; do
+        content="${content/%%RANDOM_PASSWORD%%/$(openssl rand -hex 16)}"
+    done
+    while [[ "$content" == *"%%RANDOM_SECRET%%"* ]]; do
+        content="${content/%%RANDOM_SECRET%%/$(openssl rand -hex 32)}"
+    done
 
-# Metadata providers (optional — edit later if needed)
-SCREENSCRAPER_USER=
-SCREENSCRAPER_PASSWORD=
-STEAMGRIDDB_API_KEY=
-IGDB_CLIENT_ID=
-IGDB_CLIENT_SECRET=
-ENVEOF
-            ;;
-        nginx-proxy-manager)
-            cat > "$env_file" <<ENVEOF
-# NPM database
-NPM_DB_USER=npm
-NPM_DB_PASSWORD=$(gen_password)
-NPM_DB_ROOT_PASSWORD=$(gen_password)
-ENVEOF
-            ;;
-        grafana)
-            cat > "$env_file" <<ENVEOF
-# Grafana admin
-GF_SECURITY_ADMIN_USER=admin
-GF_SECURITY_ADMIN_PASSWORD=$(gen_password)
-ENVEOF
-            ;;
-        github-runner)
-            cat > "$env_file" <<'ENVEOF'
-# GitHub Actions Runner
-# Generate at: https://github.com/organizations/caskey-server/settings/actions/runners/new
-RUNNER_TOKEN=CHANGE_ME
-RUNNER_NAME=nuc-runner
-RUNNER_LABELS=self-hosted,linux,x64
-ENVEOF
-            ;;
-        *)
-            # No .env needed for this service
-            return
-            ;;
-    esac
-
-    info "Generated $service_name/.env with random credentials."
+    echo "$content" > "$env_file"
+    info "Generated $service_name/.env from template."
 }
 
 for service_dir in "$REPO_DIR"/services/*/; do
