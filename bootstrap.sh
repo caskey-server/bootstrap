@@ -70,6 +70,28 @@ if ! gh api "orgs/caskey-server/repos" --silent 2>/dev/null; then
 fi
 info "PAT scope verified."
 
+# ---------- Home Assistant write PAT ----------
+info "Home Assistant UI edits (automations, scripts, scenes) are committed"
+info "back to Git daily. This requires a separate PAT with write access"
+info "scoped to the caskey-server/home-assistant repo."
+echo ""
+if [[ -f "/data/local/config/.ha-write-token" ]]; then
+    info "HA write token already exists — skipping."
+else
+    read -rsp "Enter GitHub PAT for home-assistant repo (Contents: Read and write): " HA_WRITE_PAT </dev/tty
+    echo
+
+    if [[ -z "$HA_WRITE_PAT" ]]; then
+        warn "No HA write PAT provided. Skipping autocommit setup."
+        warn "HA UI changes will NOT be committed back to Git automatically."
+    else
+        mkdir -p /data/local/config
+        echo "$HA_WRITE_PAT" > /data/local/config/.ha-write-token
+        chmod 600 /data/local/config/.ha-write-token
+        info "HA write token stored."
+    fi
+fi
+
 # ---------- AdGuard credentials ----------
 info "AdGuard Home admin credentials"
 read -rp "  AdGuard admin username: " ADGUARD_USER </dev/tty
@@ -91,7 +113,6 @@ if [[ -d "$REPO_DIR/.git" ]]; then
     cd "$REPO_DIR"
     git pull --recurse-submodules
     git submodule update --init --recursive
-    git submodule foreach git checkout main
 else
     info "Cloning server repo to $REPO_DIR..."
     gh repo clone "$REPO_URL" "$REPO_DIR" -- --recurse-submodules
@@ -114,6 +135,21 @@ if [[ ${#missing_submodules[@]} -gt 0 ]]; then
     exit 1
 fi
 info "All submodules present."
+
+# Ensure all submodules are on main (not detached HEAD)
+git -C "$REPO_DIR" submodule foreach git checkout main
+
+# ---------- configure HA submodule for autocommit ----------
+HA_DIR="$REPO_DIR/services/home-assistant"
+if [[ -f "/data/local/config/.ha-write-token" ]]; then
+    HA_TOKEN=$(cat /data/local/config/.ha-write-token)
+    git -C "$HA_DIR" config url."https://x-access-token:${HA_TOKEN}@github.com/caskey-server/".insteadOf "https://github.com/caskey-server/"
+    git -C "$HA_DIR" config user.name "HA Autocommit"
+    git -C "$HA_DIR" config user.email "ha-autocommit@caskey.cloud"
+    info "HA submodule configured for autocommit."
+else
+    warn "No HA write token — skipping submodule git config."
+fi
 
 # ---------- generate .env files ----------
 info "Checking service .env files..."
