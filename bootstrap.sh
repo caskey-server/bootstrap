@@ -76,7 +76,7 @@ if [[ -d "$REPO_DIR/.git" ]]; then
     cd "$REPO_DIR"
     git pull --recurse-submodules
     git submodule update --init --recursive
-    git submodule foreach git checkout main
+    git submodule foreach 'git fetch origin && git checkout main && git reset --hard origin/main'
 else
     info "Cloning server repo to $REPO_DIR..."
     gh repo clone "$REPO_URL" "$REPO_DIR" -- --recurse-submodules
