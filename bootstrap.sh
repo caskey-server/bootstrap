@@ -103,6 +103,8 @@ info "All submodules present."
 # ---------- generate .env files ----------
 info "Checking service .env files..."
 drift_services=()
+env_secrets_needed=()
+
 
 check_env_drift() {
     local service_dir="$1"
@@ -158,6 +160,13 @@ generate_env() {
         rand=$(xxd -l 32 -p -c 256 /dev/urandom)
         sed -i "0,/GENERATE_SECRET/{s/GENERATE_SECRET/$rand/}" "$env_file"
     done
+    # Check for values that still need manual input
+    local manual_keys
+    manual_keys=$(grep -E '=(CHANGE_ME|PASTE_[A-Z_]+_HERE)$' "$env_file" \
+        | grep -oP '^[A-Za-z_][A-Za-z0-9_]*(?==)' || true)
+    if [[ -n "$manual_keys" ]]; then
+        env_secrets_needed+=("$service_name")
+    fi
     info "$service_name/.env generated."
 }
 
@@ -211,6 +220,15 @@ if ! tailscale status &>/dev/null; then
   sudo tailscale up --advertise-routes=192.168.1.0/24 --accept-dns=false
 STEP
 )")
+fi
+
+if [[ ${#env_secrets_needed[@]} -gt 0 ]]; then
+    secrets_msg="• .env secrets — The following services have .env files"
+    secrets_msg+=$'\n'"  with placeholder values that need setting manually:"
+    for svc in "${env_secrets_needed[@]}"; do
+        secrets_msg+=$'\n'"  - $svc"
+    done
+    post_steps+=("$secrets_msg")
 fi
 
 if [[ ${#drift_services[@]} -gt 0 ]]; then
