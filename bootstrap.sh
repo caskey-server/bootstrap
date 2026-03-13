@@ -61,6 +61,11 @@ fi
 git config --global url."https://x-access-token:$(gh auth token)@github.com/caskey-server/".insteadOf "https://github.com/caskey-server/"
 info "Git credentials configured (global)."
 
+# Persist token for Ansible to authenticate Docker with GHCR
+gh auth token > /root/.ghcr-token
+chmod 600 /root/.ghcr-token
+info "GHCR token saved for Ansible."
+
 # ---------- verify PAT scope ----------
 info "Verifying PAT has access to caskey-server org..."
 if ! gh api "orgs/caskey-server/repos" --silent 2>/dev/null; then
