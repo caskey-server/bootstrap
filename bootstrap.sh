@@ -40,11 +40,14 @@ apt-get update -qq
 apt-get install -y -qq git ansible gh apache2-utils
 
 # ---------- GitHub auth ----------
-if ! gh auth status &>/dev/null; then
-    if [[ -z "${GITHUB_PAT:-}" ]]; then
-        read -rsp "Enter GitHub PAT for caskey-server org: " GITHUB_PAT </dev/tty
-        echo
-    fi
+# Always re-auth when a PAT is provided (handles token rotation).
+# Only prompt interactively if gh isn't already authenticated.
+if [[ -n "${GITHUB_PAT:-}" ]]; then
+    echo "$GITHUB_PAT" | gh auth login --with-token
+    info "GitHub CLI authenticated (from GITHUB_PAT)."
+elif ! gh auth status &>/dev/null; then
+    read -rsp "Enter GitHub PAT for caskey-server org: " GITHUB_PAT </dev/tty
+    echo
 
     if [[ -z "$GITHUB_PAT" ]]; then
         error "GITHUB_PAT is empty. Cannot authenticate."
