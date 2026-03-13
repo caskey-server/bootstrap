@@ -70,21 +70,6 @@ if ! gh api "orgs/caskey-server/repos" --silent 2>/dev/null; then
 fi
 info "PAT scope verified."
 
-# ---------- AdGuard credentials ----------
-info "AdGuard Home admin credentials"
-read -rp "  AdGuard admin username: " ADGUARD_USER </dev/tty
-while true; do
-    read -rsp "  AdGuard admin password: " ADGUARD_PASS </dev/tty
-    echo
-    read -rsp "  Confirm password: " ADGUARD_PASS_CONFIRM </dev/tty
-    echo
-    if [[ "$ADGUARD_PASS" == "$ADGUARD_PASS_CONFIRM" ]]; then
-        break
-    fi
-    warn "Passwords do not match — try again."
-done
-ADGUARD_HASH=$(htpasswd -nbBC 10 "" "$ADGUARD_PASS" | cut -d: -f2)
-
 # ---------- clone server repo ----------
 if [[ -d "$REPO_DIR/.git" ]]; then
     info "Server repo already cloned at $REPO_DIR — pulling latest..."
@@ -185,6 +170,20 @@ ADGUARD_TMPL="$REPO_DIR/services/adguard/config/AdGuardHome.yaml.template"
 if [[ -f "$ADGUARD_CONF" ]]; then
     info "AdGuardHome.yaml already exists — skipping."
 else
+    info "AdGuard Home admin credentials"
+    read -rp "  AdGuard admin username: " ADGUARD_USER </dev/tty
+    while true; do
+        read -rsp "  AdGuard admin password: " ADGUARD_PASS </dev/tty
+        echo
+        read -rsp "  Confirm password: " ADGUARD_PASS_CONFIRM </dev/tty
+        echo
+        if [[ "$ADGUARD_PASS" == "$ADGUARD_PASS_CONFIRM" ]]; then
+            break
+        fi
+        warn "Passwords do not match — try again."
+    done
+    ADGUARD_HASH=$(htpasswd -nbBC 10 "" "$ADGUARD_PASS" | cut -d: -f2)
+
     info "Generating AdGuardHome.yaml from template..."
     escaped_hash=$(printf '%s' "$ADGUARD_HASH" | sed 's/[&\\]/\\&/g')
     sed -e "s|%%ADGUARD_USER%%|${ADGUARD_USER}|g" \
