@@ -78,6 +78,10 @@ if [[ -d "$REPO_DIR/.git" ]]; then
     git submodule update --init --recursive
     git submodule foreach 'git fetch origin && git checkout main && git reset --hard origin/main'
 else
+    if [[ -d "$REPO_DIR" ]]; then
+        warn "$REPO_DIR exists but is not a git repo — removing..."
+        rm -rf "$REPO_DIR"
+    fi
     info "Cloning server repo to $REPO_DIR..."
     gh repo clone "$REPO_URL" "$REPO_DIR" -- --recurse-submodules
 fi
