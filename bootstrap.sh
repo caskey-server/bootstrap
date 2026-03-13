@@ -102,6 +102,7 @@ info "All submodules present."
 
 # ---------- generate .env files ----------
 info "Checking service .env files..."
+drift_services=()
 
 check_env_drift() {
     local service_dir="$1"
@@ -119,6 +120,7 @@ check_env_drift() {
     missing=$(comm -23 <(echo "$template_keys") <(echo "$env_keys"))
 
     if [[ -n "$missing" ]]; then
+        drift_services+=("$service_name")
         warn "$service_name/.env is missing keys from template:"
         while IFS= read -r key; do
             warn "  - $key"
@@ -197,11 +199,42 @@ info "Running Ansible playbook..."
 cd "$REPO_DIR"
 ansible-playbook -c local ansible/site.yml
 
+# ---------- post-bootstrap summary ----------
 info "Bootstrap complete!"
+
+post_steps=()
+
+if ! tailscale status &>/dev/null; then
+    post_steps+=("$(cat <<'STEP'
+• Tailscale — Authenticate and advertise the LAN subnet, then
+  approve the route in the Tailscale admin console:
+  sudo tailscale up --advertise-routes=192.168.1.0/24 --accept-dns=false
+STEP
+)")
+fi
+
+if [[ ${#drift_services[@]} -gt 0 ]]; then
+    drift_msg="• .env drift — The following services have .env files"
+    drift_msg+=$'\n'"  missing keys from their templates. Review the warnings"
+    drift_msg+=$'\n'"  above and manually add the missing keys:"
+    for svc in "${drift_services[@]}"; do
+        drift_msg+=$'\n'"  - $svc"
+    done
+    post_steps+=("$drift_msg")
+fi
+
 echo ""
 echo "============================================"
-echo "  Manual steps required to finish setup."
-echo "  See: $REPO_DIR/README.md"
-echo ""
-echo "  Quick view: cat $REPO_DIR/README.md"
-echo "============================================"
+if [[ ${#post_steps[@]} -gt 0 ]]; then
+    echo "  Manual steps required to finish setup."
+    echo "============================================"
+    echo ""
+    for step in "${post_steps[@]}"; do
+        echo "$step"
+        echo ""
+    done
+    echo "  See also: $REPO_DIR/README.md"
+else
+    echo "  No manual steps required."
+    echo "============================================"
+fi
