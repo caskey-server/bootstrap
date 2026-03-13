@@ -70,7 +70,7 @@ info "GHCR token saved for Ansible."
 info "Verifying PAT has access to caskey-server org..."
 if ! gh api "orgs/caskey-server/repos" --silent 2>/dev/null; then
     error "PAT cannot access caskey-server org repos."
-    error "Ensure the token has Contents:Read scope for the caskey-server org."
+    error "Ensure the token is a classic PAT with repo and read:packages scopes."
     exit 1
 fi
 info "PAT scope verified."
