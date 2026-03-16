@@ -49,6 +49,8 @@ if [[ -z "${SUDO_USER}" ]]; then
     error "Run with sudo, not as a direct root login"
 fi
 
+REAL_HOME=$(getent passwd "${SUDO_USER}" | cut -d: -f6)
+
 # ------------------------------------------------------------------------------
 # 1. Docker
 # ------------------------------------------------------------------------------
@@ -111,7 +113,49 @@ else
 fi
 
 # ------------------------------------------------------------------------------
-# 3. Ansible
+# 3. Kernel networking configuration (for Tailscale subnet routes)
+# ------------------------------------------------------------------------------
+
+# IPv6 forwarding (required for Tailscale subnet routes)
+if grep -q "^net.ipv6.conf.all.forwarding=1" /etc/sysctl.conf; then
+    ok "IPv6 forwarding already enabled"
+else
+    echo "net.ipv6.conf.all.forwarding=1" >> /etc/sysctl.conf
+    sysctl -w net.ipv6.conf.all.forwarding=1 >/dev/null
+    ok "IPv6 forwarding enabled"
+fi
+
+# UDP GRO forwarding (performance optimisation for Tailscale)
+DEFAULT_IFACE=$(ip route show default | awk '/default/ {print $5; exit}')
+if [[ -z "${DEFAULT_IFACE}" ]]; then
+    warn "Could not detect default network interface — skipping UDP GRO configuration"
+else
+    ETHTOOL_SERVICE="/etc/systemd/system/ethtool-udp-gro.service"
+    if [[ -f "${ETHTOOL_SERVICE}" ]]; then
+        ok "UDP GRO service already configured"
+    else
+        apt-get install -y -qq ethtool
+        cat > "${ETHTOOL_SERVICE}" <<EOF
+[Unit]
+Description=Configure UDP GRO forwarding for Tailscale
+After=network.target
+
+[Service]
+Type=oneshot
+ExecStart=/sbin/ethtool -K ${DEFAULT_IFACE} rx-udp-gro-forwarding on rx-gro-list off
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+EOF
+        systemctl daemon-reload
+        systemctl enable --now ethtool-udp-gro.service
+        ok "UDP GRO forwarding configured on ${DEFAULT_IFACE}"
+    fi
+fi
+
+# ------------------------------------------------------------------------------
+# 4. Ansible
 # ------------------------------------------------------------------------------
 
 if sudo -u "${SUDO_USER}" bash -c 'command -v ansible &>/dev/null'; then
@@ -131,7 +175,7 @@ else
 fi
 
 # ------------------------------------------------------------------------------
-# 4. Clone server repo
+# 5. Clone server repo
 # ------------------------------------------------------------------------------
 
 if [[ -d "${INSTALL_DIR}/.git" ]]; then
@@ -146,15 +190,96 @@ else
         error "PAT cannot be empty"
     fi
 
-    git clone --recurse-submodules \
-        "https://${GITHUB_PAT}@github.com/${REPO_ORG}/${REPO_NAME}.git" \
+    # Store the PAT in the credential store so Git doesn't prompt
+    sudo -u "${SUDO_USER}" HOME="${REAL_HOME}" git config --global credential.helper store
+    sudo -u "${SUDO_USER}" bash -c "echo 'https://git:${GITHUB_PAT}@github.com' > '${REAL_HOME}/.git-credentials'"
+    chmod 0600 "${REAL_HOME}/.git-credentials"
+    chown "${SUDO_USER}:${SUDO_USER}" "${REAL_HOME}/.git-credentials"
+
+    mkdir -p "${INSTALL_DIR}"
+    chown "${SUDO_USER}:${SUDO_USER}" "${INSTALL_DIR}"
+
+    sudo -u "${SUDO_USER}" HOME="${REAL_HOME}" git clone --recurse-submodules \
+        "https://github.com/${REPO_ORG}/${REPO_NAME}.git" \
         "${INSTALL_DIR}"
 
-    # Set ownership to the invoking user so they can operate without sudo
     chown -R "${SUDO_USER}:${SUDO_USER}" "${INSTALL_DIR}"
 
     ok "Server repo cloned to ${INSTALL_DIR}"
 fi
+
+# ------------------------------------------------------------------------------
+# 6. Ansible vault password
+# ------------------------------------------------------------------------------
+
+VAULT_PASS_FILE="${REAL_HOME}/.vault_pass"
+
+if [[ -f "${VAULT_PASS_FILE}" ]]; then
+    ok "Ansible vault password file already exists"
+else
+    info "Setting up Ansible vault password..."
+
+    read -rsp "Ansible vault password: " vault_pass
+    echo
+
+    if [[ -z "${vault_pass}" ]]; then
+        error "Vault password cannot be empty"
+    fi
+
+    echo "${vault_pass}" > "${VAULT_PASS_FILE}"
+    chmod 0600 "${VAULT_PASS_FILE}"
+    chown "${SUDO_USER}:${SUDO_USER}" "${VAULT_PASS_FILE}"
+
+    ok "Vault password saved to ${VAULT_PASS_FILE}"
+fi
+
+# ------------------------------------------------------------------------------
+# 7. Initialise Ansible vault
+# ------------------------------------------------------------------------------
+
+VAULT_FILE="${INSTALL_DIR}/ansible/group_vars/all/vault.yml"
+ANSIBLE_VAULT_BIN="${REAL_HOME}/.local/bin/ansible-vault"
+
+if [[ -f "${VAULT_FILE}" ]]; then
+    ok "Vault file already exists"
+else
+    info "Creating empty vault file..."
+    tmp=$(sudo -u "${SUDO_USER}" mktemp)
+    sudo -u "${SUDO_USER}" bash -c "echo '# Vault — add secrets here using: ansible-vault edit ansible/group_vars/vault.yml' > '${tmp}'"
+    sudo -u "${SUDO_USER}" ANSIBLE_VAULT_PASSWORD_FILE="${VAULT_PASS_FILE}" \
+        "${ANSIBLE_VAULT_BIN}" encrypt "${tmp}" --output="${VAULT_FILE}"
+    rm "${tmp}"
+    chown "${SUDO_USER}:${SUDO_USER}" "${VAULT_FILE}"
+    ok "Vault file created at ${VAULT_FILE}"
+fi
+
+# ------------------------------------------------------------------------------
+# 8. Storage group
+# ------------------------------------------------------------------------------
+
+STORAGE_DIR="/data/storage"
+STORAGE_GROUP="storageUsers"
+
+if getent group "${STORAGE_GROUP}" > /dev/null 2>&1; then
+    ok "${STORAGE_GROUP} group already exists"
+else
+    info "Creating ${STORAGE_GROUP} group..."
+    groupadd "${STORAGE_GROUP}"
+    ok "${STORAGE_GROUP} group created"
+fi
+
+if id -nG "${SUDO_USER}" | grep -qw "${STORAGE_GROUP}"; then
+    ok "${SUDO_USER} is already in ${STORAGE_GROUP}"
+else
+    info "Adding ${SUDO_USER} to ${STORAGE_GROUP}..."
+    usermod -aG "${STORAGE_GROUP}" "${SUDO_USER}"
+    ok "${SUDO_USER} added to ${STORAGE_GROUP}"
+fi
+
+info "Setting ownership and permissions on ${STORAGE_DIR}..."
+chown -R root:"${STORAGE_GROUP}" "${STORAGE_DIR}"
+chmod -R 2775 "${STORAGE_DIR}"
+ok "Ownership and permissions set on ${STORAGE_DIR}"
 
 # ------------------------------------------------------------------------------
 # Done
@@ -162,6 +287,7 @@ fi
 
 echo ""
 info "Bootstrap complete. Next steps:"
-echo "  1. tailscale up --advertise-routes=${TAILSCALE_SUBNET} --accept-dns=false"
-echo "  1. cd ${INSTALL_DIR}"
-echo "  2. Run the Ansible playbook to deploy services"
+echo "  1. Log out and back in (group membership for ${STORAGE_GROUP} requires a new session)"
+echo "  2. tailscale up --advertise-routes=${TAILSCALE_SUBNET} --accept-dns=false"
+echo "  3. cd ${INSTALL_DIR}"
+echo "  4. Run the Ansible playbook to deploy services"
