@@ -171,6 +171,7 @@ else
     fi
 
     sudo -u "${SUDO_USER}" pipx install --include-deps ansible
+    sudo -u "${SUDO_USER}" pipx inject ansible passlib
     ok "Ansible installed"
 fi
 
