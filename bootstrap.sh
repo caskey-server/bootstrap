@@ -193,6 +193,10 @@ else
     ok "Ansible installed"
 fi
 
+info "Injecting Ansible Python dependencies..."
+sudo -u "${SUDO_USER}" pipx inject ansible docker requests --force
+ok "Ansible Python dependencies injected"
+
 
 # ------------------------------------------------------------------------------
 # 5. Clone server repo
