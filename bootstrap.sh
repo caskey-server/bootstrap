@@ -196,8 +196,7 @@ else
 fi
 
 info "Injecting Ansible Python dependencies..."
-sudo -u "${SUDO_USER}" pipx inject ansible passlib bcrypt docker requests --force
-sudo -u "${SUDO_USER}" pipx inject ansible passlib "bcrypt==4.0.1" --force
+sudo -u "${SUDO_USER}" pipx inject ansible passlib "bcrypt==4.0.1" docker requests lxml --force
 ok "Ansible Python dependencies injected"
 
 
