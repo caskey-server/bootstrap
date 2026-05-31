@@ -1,0 +1,15 @@
+# JetBrains
+.idea/
+*.iml
+*.iws
+*.ipr
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# VSCode
+.vscode/
+*.code-workspace
