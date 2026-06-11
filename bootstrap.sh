@@ -23,6 +23,7 @@ set -euo pipefail
 #    8. Configure Age (generate key + back-up reminder)
 #    9. Configure storage group and permissions
 #   10. Set passwordless sudo
+#   11. Install BlueZ (Bluetooth Driver)
 #
 # NOTES:
 #     - This script is idempotent and can be safely re-run.
@@ -399,6 +400,28 @@ ok "Ownership and permissions set on ${STORAGE_DIR}"
 
 echo "${SUDO_USER} ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/${SUDO_USER}
 chmod 0440 /etc/sudoers.d/${SUDO_USER}
+
+
+# ------------------------------------------------------------------------------
+# 11. BlueZ
+# ------------------------------------------------------------------------------
+
+
+if dpkg -s bluez >/dev/null 2>&1; then
+    ok "BlueZ already installed"
+else
+    info "Installing BlueZ..."
+    apt-get install -y -qq bluez
+    ok "BlueZ installed"
+fi
+
+if systemctl is-active --quiet bluetooth; then
+    ok "BlueZ service already running"
+else
+    info "Enabling and starting bluetooth.service..."
+    systemctl enable --now bluetooth
+    ok "BlueZ service running"
+fi
 
 
 # ------------------------------------------------------------------------------
