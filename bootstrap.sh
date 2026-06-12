@@ -24,6 +24,7 @@ set -euo pipefail
 #    9. Configure storage group and permissions
 #   10. Set passwordless sudo
 #   11. Install BlueZ (Bluetooth Driver)
+#   12. Install Firefox + xauth (for SSH X11 forwarding)
 #
 # NOTES:
 #     - This script is idempotent and can be safely re-run.
@@ -421,6 +422,53 @@ else
     info "Enabling and starting bluetooth.service..."
     systemctl enable --now bluetooth
     ok "BlueZ service running"
+fi
+
+
+# ------------------------------------------------------------------------------
+# 12. Firefox (and xauth for x11 forwarding)
+# ------------------------------------------------------------------------------
+
+
+if dpkg -s xauth >/dev/null 2>&1; then
+    ok "xauth already installed"
+else
+    info "Installing xauth (required for SSH X11 forwarding)..."
+    apt-get install -y -qq xauth
+    ok "xauth installed"
+fi
+
+MOZILLA_SOURCES="/etc/apt/sources.list.d/mozilla.sources"
+if [[ -f "${MOZILLA_SOURCES}" ]] && command_exists firefox; then
+    ok "Firefox already installed from Mozilla apt repo ($(firefox --version 2>/dev/null))"
+else
+    info "Installing Firefox from Mozilla apt repository..."
+
+    install -m 0755 -d /etc/apt/keyrings
+    curl -fsSL https://packages.mozilla.org/apt/repo-signing-key.gpg \
+        -o /etc/apt/keyrings/packages.mozilla.org.asc
+    chmod a+r /etc/apt/keyrings/packages.mozilla.org.asc
+
+    tee "${MOZILLA_SOURCES}" <<EOF >/dev/null
+Types: deb
+URIs: https://packages.mozilla.org/apt
+Suites: mozilla
+Components: main
+Signed-By: /etc/apt/keyrings/packages.mozilla.org.asc
+EOF
+
+    # Pin Mozilla above the Ubuntu snap transition package so `apt install
+    # firefox` picks the real .deb.
+    cat > /etc/apt/preferences.d/mozilla <<EOF
+Package: *
+Pin: origin packages.mozilla.org
+Pin-Priority: 1000
+EOF
+
+    apt-get update -qq
+    apt-get install -y -qq firefox
+
+    ok "Firefox installed ($(firefox --version 2>/dev/null))"
 fi
 
 
