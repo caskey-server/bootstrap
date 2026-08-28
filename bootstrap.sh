@@ -72,18 +72,20 @@ USER_HOME=$(getent passwd "${SUDO_USER}" | cut -d: -f6)
 
 
 # ------------------------------------------------------------------------------
-# 0.2. Verify data drive is mounted at /data
+# 0.2. Verify both data drives are mounted at /data/nvme and /data/das
 # ------------------------------------------------------------------------------
 
-if mountpoint -q /data 2>/dev/null || mountpoint -q /data/storage 2>/dev/null; then
-    ok "Data drive is mounted"
+if mountpoint -q /data/nvme 2>/dev/null && mountpoint -q /data/das 2>/dev/null; then
+    ok "Both data drives are mounted"
 else
-    error "Data drive is not mounted at /data or /data/storage.
-        Mount it (and add an /etc/fstab entry) before running bootstrap.
-        Run 'lsblk' to find the device, then for example:
-          sudo mkdir -p /data
-          sudo mount /dev/sdX1 /data
-          echo 'UUID=<uuid>  /data  ext4  defaults  0  2' | sudo tee -a /etc/fstab"
+    error "Data drives are not mounted at /data/nvme and /data/das.
+        Mount them (and add /etc/fstab entries) before running bootstrap.
+        Run 'lsblk' to find the devices, then for example:
+          sudo mkdir -p /data/nvme /data/das
+          sudo mount /dev/sdX1 /data/nvme
+          sudo mount /dev/sdY1 /data/das
+          echo 'UUID=<uuid>  /data/nvme  ext4  defaults  0  2' | sudo tee -a /etc/fstab
+          echo 'UUID=<uuid>  /data/das   ext4  defaults  0  2' | sudo tee -a /etc/fstab"
 fi
 
 
@@ -355,44 +357,57 @@ AGE_PUBLIC_KEY=$(sudo -u "${SUDO_USER}" grep '^# public key: ' "${AGE_KEY_FILE}"
 
 
 # ------------------------------------------------------------------------------
-# 9. Configure storage group
+# 9. Configure data group
+#
+# A single ownership pass against /data covers both /data/nvme and /data/das
+# since chown/chmod -R traverse into mounted subdirectories by default — this
+# relies on both drives already being mounted (checked in step 0.2 above).
 # ------------------------------------------------------------------------------
 
-STORAGE_DIR="/data/storage"
-STORAGE_GROUP="storageUsers"
-STORAGE_GID="1001"  # must match storage_users_gid in ansible group_vars/all.yml
+DATA_DIR="/data"
+DATA_GROUP="dataGroup"
+DATA_GROUP_GID="1001"  # must match data_group_gid in ansible group_vars/all.yml
+LEGACY_DATA_GROUP="storageUsers"  # pre-rename name; migrated in place below if found
 
-if getent group "${STORAGE_GROUP}" > /dev/null 2>&1; then
-    existing_gid=$(getent group "${STORAGE_GROUP}" | cut -d: -f3)
-    if [[ "${existing_gid}" != "${STORAGE_GID}" ]]; then
-        error "${STORAGE_GROUP} exists but with gid ${existing_gid} (expected ${STORAGE_GID}). Fix manually before re-running."
+if getent group "${DATA_GROUP}" > /dev/null 2>&1; then
+    existing_gid=$(getent group "${DATA_GROUP}" | cut -d: -f3)
+    if [[ "${existing_gid}" != "${DATA_GROUP_GID}" ]]; then
+        error "${DATA_GROUP} exists but with gid ${existing_gid} (expected ${DATA_GROUP_GID}). Fix manually before re-running."
     fi
-    ok "${STORAGE_GROUP} group already exists (gid ${STORAGE_GID})"
+    ok "${DATA_GROUP} group already exists (gid ${DATA_GROUP_GID})"
+elif getent group "${LEGACY_DATA_GROUP}" > /dev/null 2>&1; then
+    existing_gid=$(getent group "${LEGACY_DATA_GROUP}" | cut -d: -f3)
+    if [[ "${existing_gid}" != "${DATA_GROUP_GID}" ]]; then
+        error "${LEGACY_DATA_GROUP} exists but with gid ${existing_gid} (expected ${DATA_GROUP_GID}). Fix manually before re-running."
+    fi
+    info "Renaming legacy ${LEGACY_DATA_GROUP} group to ${DATA_GROUP}..."
+    groupmod -n "${DATA_GROUP}" "${LEGACY_DATA_GROUP}"
+    ok "${LEGACY_DATA_GROUP} renamed to ${DATA_GROUP} (gid ${DATA_GROUP_GID})"
 else
-    info "Creating ${STORAGE_GROUP} group (gid ${STORAGE_GID})..."
-    groupadd -g "${STORAGE_GID}" "${STORAGE_GROUP}"
-    ok "${STORAGE_GROUP} group created"
+    info "Creating ${DATA_GROUP} group (gid ${DATA_GROUP_GID})..."
+    groupadd -g "${DATA_GROUP_GID}" "${DATA_GROUP}"
+    ok "${DATA_GROUP} group created"
 fi
 
-if id -nG "${SUDO_USER}" | grep -qw "${STORAGE_GROUP}"; then
-    ok "${SUDO_USER} is already in ${STORAGE_GROUP}"
+if id -nG "${SUDO_USER}" | grep -qw "${DATA_GROUP}"; then
+    ok "${SUDO_USER} is already in ${DATA_GROUP}"
 else
-    info "Adding ${SUDO_USER} to ${STORAGE_GROUP}..."
-    usermod -aG "${STORAGE_GROUP}" "${SUDO_USER}"
+    info "Adding ${SUDO_USER} to ${DATA_GROUP}..."
+    usermod -aG "${DATA_GROUP}" "${SUDO_USER}"
     GROUPS_CHANGED=1
-    ok "${SUDO_USER} added to ${STORAGE_GROUP}"
+    ok "${SUDO_USER} added to ${DATA_GROUP}"
 fi
 
-if [[ ! -d "${STORAGE_DIR}" ]]; then
-    info "Creating ${STORAGE_DIR}..."
-    mkdir -p "${STORAGE_DIR}"
-    ok "${STORAGE_DIR} created"
+if [[ ! -d "${DATA_DIR}" ]]; then
+    info "Creating ${DATA_DIR}..."
+    mkdir -p "${DATA_DIR}"
+    ok "${DATA_DIR} created"
 fi
 
-info "Setting ownership and permissions on ${STORAGE_DIR}..."
-chown -R root:"${STORAGE_GROUP}" "${STORAGE_DIR}"
-chmod -R 2775 "${STORAGE_DIR}"
-ok "Ownership and permissions set on ${STORAGE_DIR}"
+info "Setting ownership and permissions on ${DATA_DIR}..."
+chown -R root:"${DATA_GROUP}" "${DATA_DIR}"
+chmod -R 2775 "${DATA_DIR}"
+ok "Ownership and permissions set on ${DATA_DIR}"
 
 
 # ------------------------------------------------------------------------------
