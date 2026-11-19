@@ -9,7 +9,7 @@ set -euo pipefail
 # Pre-requisites:
 #   - Ubuntu Server 24.04 or later
 #   - Ability to run as a sudo user
-#   - GitHub PAT with access to the repository defined below
+#   - GitHub PAT with access to the repository defined below (used only for the initial clone; not stored)
 #
 # Steps:
 #    0. Verify environment, data drive mount, and refresh package lists
@@ -273,18 +273,22 @@ else
         error "PAT cannot be empty"
     fi
 
-    # Store the PAT in the credential store so Git (and Ansible's per-service clones) doesn't prompt
-    sudo -u "${SUDO_USER}" HOME="${USER_HOME}" git config --global credential.helper store
-    sudo -u "${SUDO_USER}" bash -c "echo 'https://git:${GITHUB_PAT}@github.com' > '${USER_HOME}/.git-credentials'"
-    chmod 0600 "${USER_HOME}/.git-credentials"
-    chown "${SUDO_USER}:${SUDO_USER}" "${USER_HOME}/.git-credentials"
+    # The PAT is only used for this clone (passed via a one-shot credential helper,
+    # never written to disk). The orchestrator's github_auth role installs the
+    # long-lived credentials from its SOPS secrets on the first deploy.
+    export GITHUB_PAT
 
     mkdir -p "${INSTALL_DIR}"
     chown "${SUDO_USER}:${SUDO_USER}" "$(dirname "${INSTALL_DIR}")" "${INSTALL_DIR}"
 
-    sudo -u "${SUDO_USER}" HOME="${USER_HOME}" git clone \
+    sudo --preserve-env=GITHUB_PAT -u "${SUDO_USER}" HOME="${USER_HOME}" git \
+        -c credential.helper= \
+        -c 'credential.helper=!f() { echo username=git; echo "password=${GITHUB_PAT}"; }; f' \
+        clone \
         "https://github.com/${SERVER_REPO_ORG}/${SERVER_REPO_NAME}.git" \
         "${INSTALL_DIR}"
+
+    unset GITHUB_PAT
 
     chown -R "${SUDO_USER}:${SUDO_USER}" "${INSTALL_DIR}"
 
