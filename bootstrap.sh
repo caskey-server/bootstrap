@@ -521,7 +521,10 @@ else
 fi
 
 echo "  4. Run: cd ${INSTALL_DIR}"
-echo "  5. Run: ansible-playbook ansible/playbooks/server.yml"
+echo "  5. Run: ansible-playbook ansible/playbooks/host_git_setup.yml"
+echo "     (git defaults, GitHub credentials and the ghcr.io login; the deploy"
+echo "     playbooks no longer set these up, so this must come before server.yml)"
+echo "  6. Run: ansible-playbook ansible/playbooks/server.yml"
 echo ""
 echo "============================================================"
 echo "  Backing up age private key"
